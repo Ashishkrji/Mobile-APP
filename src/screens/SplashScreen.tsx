@@ -2,33 +2,32 @@ import React, { useEffect } from 'react';
 import { StatusBar, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
+  Extrapolation,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
-  type SharedValue,
 } from 'react-native-reanimated';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { useNavigation } from '@react-navigation/native';
-import { useSelector } from 'react-redux';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../navigation/types';
-import { RootState } from '../store/types';
+import { useAppSelector } from '../store';
 
-type SplashNavigationProp = StackNavigationProp<RootStackParamList, 'Splash'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'Splash'>;
 
-const DOT_COUNT = 3;
-const SPLASH_TOTAL_DELAY_MS = 1500;
+const SPLASH_DURATION_MS = 1500;
+const DOTS = [0, 1, 2];
 
-const SplashScreen: React.FC = () => {
-  const navigation = useNavigation<SplashNavigationProp>();
-
-  const { isOnboarded, biometricEnabled } = useSelector((state: RootState) => state.auth);
+const SplashScreen: React.FC<Props> = ({ navigation }) => {
+  const { isOnboarded, biometricEnabled } = useAppSelector((state) => state.auth);
 
   const logoProgress = useSharedValue(0);
-  const dotProgress = useSharedValue(0);
+  const dot1 = useSharedValue(0.4);
+  const dot2 = useSharedValue(0.4);
+  const dot3 = useSharedValue(0.4);
 
   useEffect(() => {
     logoProgress.value = withTiming(1, {
@@ -36,81 +35,73 @@ const SplashScreen: React.FC = () => {
       easing: Easing.out(Easing.cubic),
     });
 
-    dotProgress.value = withRepeat(
+    const pulse = withRepeat(
       withSequence(
-        withTiming(1, { duration: 300 }),
-        withTiming(2, { duration: 300 }),
-        withTiming(3, { duration: 300 }),
+        withTiming(1, { duration: 220 }),
+        withTiming(0.4, { duration: 220 }),
       ),
       -1,
       false,
     );
 
-    const timeout = setTimeout(() => {
+    dot1.value = pulse;
+    dot2.value = withDelay(180, pulse);
+    dot3.value = withDelay(360, pulse);
+
+    const timer = setTimeout(() => {
       if (!isOnboarded) {
         navigation.replace('Onboarding');
-        return;
-      }
-
-      if (biometricEnabled) {
+      } else if (biometricEnabled) {
         navigation.replace('Auth');
-        return;
+      } else {
+        navigation.replace('Main');
       }
+    }, SPLASH_DURATION_MS);
 
-      navigation.replace('Main');
-    }, SPLASH_TOTAL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [biometricEnabled, isOnboarded, logoProgress, dot1, dot2, dot3, navigation]);
 
-    return () => clearTimeout(timeout);
-  }, [biometricEnabled, dotProgress, isOnboarded, logoProgress, navigation]);
-
-  const logoStyle = useAnimatedStyle(() => ({
+  const logoAnimatedStyle = useAnimatedStyle(() => ({
     opacity: logoProgress.value,
     transform: [
       {
-        scale: interpolate(logoProgress.value, [0, 1], [0.8, 1]),
+        scale: interpolate(logoProgress.value, [0, 1], [0.8, 1], Extrapolation.CLAMP),
       },
     ],
+  }));
+
+  const dotStyle1 = useAnimatedStyle(() => ({
+    opacity: dot1.value,
+    transform: [{ scale: interpolate(dot1.value, [0.4, 1], [0.9, 1.1]) }],
+  }));
+
+  const dotStyle2 = useAnimatedStyle(() => ({
+    opacity: dot2.value,
+    transform: [{ scale: interpolate(dot2.value, [0.4, 1], [0.9, 1.1]) }],
+  }));
+
+  const dotStyle3 = useAnimatedStyle(() => ({
+    opacity: dot3.value,
+    transform: [{ scale: interpolate(dot3.value, [0.4, 1], [0.9, 1.1]) }],
   }));
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#E8611A" />
-
-      <Animated.View style={[styles.brandContainer, logoStyle]}>
-        <Text style={styles.icon}>🏪</Text>
+      <Animated.View style={[styles.brandBlock, logoAnimatedStyle]}>
+        <Text style={styles.logoEmoji}>🏪</Text>
         <Text style={styles.title}>DukanDost</Text>
         <Text style={styles.tagline}>Aapka Smart Business Dost</Text>
       </Animated.View>
 
-      <View style={styles.dotRow}>
-        {Array.from({ length: DOT_COUNT }).map((_, index) => (
-          <LoadingDot key={index} index={index + 1} progress={dotProgress} />
-        ))}
+      <View style={styles.loadingRow}>
+        {DOTS.map((dot, index) => {
+          const animatedStyle = index === 0 ? dotStyle1 : index === 1 ? dotStyle2 : dotStyle3;
+          return <Animated.View key={dot} style={[styles.dot, animatedStyle]} />;
+        })}
       </View>
     </View>
   );
-};
-
-interface LoadingDotProps {
-  index: number;
-  progress: SharedValue<number>;
-}
-
-const LoadingDot: React.FC<LoadingDotProps> = ({ index, progress }) => {
-  const animatedStyle = useAnimatedStyle(() => {
-    const isActive = Math.round(progress.value) === index;
-
-    return {
-      opacity: withTiming(isActive ? 1 : 0.45, { duration: 180 }),
-      transform: [
-        {
-          scale: withTiming(isActive ? 1.15 : 0.9, { duration: 180 }),
-        },
-      ],
-    };
-  });
-
-  return <Animated.View style={[styles.dot, animatedStyle]} />;
 };
 
 const styles = StyleSheet.create({
@@ -121,32 +112,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8611A',
     paddingHorizontal: 24,
   },
-  brandContainer: {
+  brandBlock: {
     alignItems: 'center',
   },
-  icon: {
-    fontSize: 62,
-    marginBottom: 8,
+  logoEmoji: {
+    fontSize: 64,
+    marginBottom: 6,
   },
   title: {
     color: '#FFFFFF',
     fontSize: 36,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+    fontWeight: '700',
   },
   tagline: {
     marginTop: 8,
     color: '#FFFFFF',
     fontSize: 16,
     fontStyle: 'italic',
-    opacity: 0.95,
   },
-  dotRow: {
-    marginTop: 26,
+  loadingRow: {
+    marginTop: 24,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    columnGap: 8,
   },
   dot: {
     width: 8,
