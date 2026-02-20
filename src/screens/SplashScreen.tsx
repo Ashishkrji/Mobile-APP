@@ -22,7 +22,7 @@ const SPLASH_DURATION_MS = 1500;
 const DOTS = [0, 1, 2];
 
 const SplashScreen: React.FC<Props> = ({ navigation }) => {
-  const { isOnboarded, biometricEnabled } = useAppSelector((state) => state.auth);
+  const { isOnboarded, biometricEnabled, isLocked } = useAppSelector((state) => state.auth);
 
   const logoProgress = useSharedValue(0);
   const dot1 = useSharedValue(0.4);
@@ -51,15 +51,17 @@ const SplashScreen: React.FC<Props> = ({ navigation }) => {
     const timer = setTimeout(() => {
       if (!isOnboarded) {
         navigation.replace('Onboarding');
-      } else if (biometricEnabled) {
-        navigation.replace('Auth');
+      } else if (isLocked) {
+        navigation.replace('Auth', {
+          preferredMethod: biometricEnabled ? 'biometric' : 'credentials',
+        });
       } else {
         navigation.replace('Main');
       }
     }, SPLASH_DURATION_MS);
 
     return () => clearTimeout(timer);
-  }, [biometricEnabled, isOnboarded, logoProgress, dot1, dot2, dot3, navigation]);
+  }, [biometricEnabled, isOnboarded, isLocked, logoProgress, dot1, dot2, dot3, navigation]);
 
   const logoAnimatedStyle = useAnimatedStyle(() => ({
     opacity: logoProgress.value,
